@@ -1,211 +1,303 @@
-# Video Aggression Understanding - VLM Evaluation Pipeline
+# Video Aggression Detection Benchmark
 
-Evaluate Vision-Language Models on their ability to understand aggressive behavior in videos. The pipeline generates multiple-choice questions from annotated videos and benchmarks models on 6 question types across ~2,700 videos.
+Comprehensive benchmark dataset and evaluation pipeline for vision-language models (VLMs) on video aggression detection tasks.
 
-## Quick Start
+## Overview
+
+This benchmark evaluates VLMs on their ability to understand aggressive behavior in videos through multiple-choice question answering. The pipeline consists of two main stages:
+
+1. **Question Generation**: Create diverse, multi-difficulty questions from video annotations
+2. **Evaluation**: Run VLMs on generated questions and compute accuracy metrics
+
+## Dataset Structure
+
+### Input Files
+
+- `annotations.json` (or `dataset.json`): Video annotations containing:
+  - `video_name`: Video filename
+  - `aggressor`: List of people displaying aggressive behavior
+  - `victim`: List of people being victimized
+  - `bystander`: List of bystanders
+  - `action`: Primary aggressive action
+  - `environment`: Scene location/context
+
+### Question Types (21 total)
+
+Questions are organized into **5 difficulty categories**:
+
+#### Simple Questions (5 types)
+- **Primary Action**: "What aggressive action takes place?"
+- **Aggressor Identification**: "Who displays aggressive behavior?"
+- **Victim Recognition**: "Who is victimized?"
+- **Bystander Detection**: "Is anyone a bystander?"
+- **Role Identification**: "What roles do people play?" (identification variant)
+
+#### Compound Questions (6 types)
+- **Compound Action+Victims**: "What action is performed and who is victimized?"
+- **Compound Action+Aggressor**: "What action is performed and who performs it?"
+- **Compound Aggressor+Victim**: "Who aggresses against whom?"
+- **Compound Aggressor+Location**: "Who displays aggression and where?"
+- **Compound Action+Location**: "What action occurs and where?" (secondary type)
+- **Compound Aggressor+Victim+Count**: "Count of aggressors and victims?" (secondary type)
+
+#### Complex Questions (3 types)
+- **Compound Aggressor+Action+Victim**: "Who performs what action on whom?" (includes frequency-inverted distractors)
+- **Interaction Summary**: "Summarize the interaction" (includes frequency-inverted distractors)
+- **Sequence Verification**: "Verify if action sequence is correct" (includes frequency-inverted distractors)
+
+#### Counting Questions (3 types)
+- **Role Count Aggressor**: "How many people display aggressive behavior?"
+- **Role Count Victim**: "How many people are victimized?"
+- **Role Count Bystander**: "How many bystanders are present?"
+
+#### Identification Questions (4 types)
+- **Scene Location**: "Where does this take place?"
+- **Social Appropriateness**: "Which actions are socially inappropriate?"
+- **Perspective Aggressor**: "What is the aggressor's perspective?"
+- **Other**: Secondary or variant identification questions
+
+### Distribution
+
+- **Primary Questions**: 15,004 questions across 9 types
+- **Secondary Questions**: 3,744 questions (marked with `_secondary` suffix)
+- **Total**: 18,748 generated questions from 2,674 videos
+
+See `prompt_generator/templates.py` for the authoritative definition of `SECONDARY_QUESTION_TYPES`.
+
+## Question Generation
+
+### Quick Start
+
+Generate questions locally (no GPU required):
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# Basic usage
+python generate_questions_local.py annotations.json
 
-# 2. Pre-generate questions (one-time, no GPU needed)
+# With custom output file
 python generate_questions_local.py annotations.json -o generated_questions.json
 
-# 3. Run evaluation
-./eval_model.sh --file generated_questions.json --model qwen-7b
+# Sample a subset (5% of videos)
+python generate_questions_local.py annotations.json --sample 0.05 --seed 42
+
+# Sample specific count
+python generate_questions_local.py annotations.json --sample 100 --seed 42
 ```
 
-## Project Structure
+### Parameters
 
-```
-prompt_generator/
-  generator.py              # Question generation logic
-  answer_bank.py            # Distractor answer pool builder
-  templates.py              # 17 question type templates
-  generate_questions.py     # Module for pre-generating questions
-  evaluation/
-    run_evaluation.py        # Single-process evaluation CLI
-    parallel_runner.py       # Multi-GPU subprocess orchestrator
-    gpu_worker.py            # Per-GPU worker process
-    evaluator.py             # Core evaluation logic
-    video_processor.py       # Frame extraction (OpenCV/Decord)
-    model_loader/
-      registry.py            # Model shortcut registry
-      base.py                # BaseVLMLoader interface
-      ovis.py, qwen_vl.py, internvl.py, ...  # Per-family loaders
+- `annotations.json`: Input annotation file (required)
+- `-o, --output`: Output file path (default: `generated_questions.json`)
+- `--sample`: Fraction (0-1) or count of videos to sample (default: all)
+- `--seed`: Random seed for reproducibility (default: none)
+- `-d, --depth`: Max difficulty for distractors (default: 8)
+- `--recipes`: Custom hardness recipe JSON file (optional)
 
-eval_model.sh               # Main entry point for running evaluations
-all_model_multi_gpu.sbatch   # SLURM batch script (called by eval_model.sh)
-monitor_job.sh               # Real-time job monitoring
-generate_questions_local.py  # Standalone question generation script
-annotations.json             # Video annotations (aggressor, victim, action, etc.)
-generated_questions.json     # Pre-generated questions (output of step 2)
-videos/                      # Video files directory
-```
+### Output Format
 
-## Evaluation Workflow
-
-### Step 1: Generate Questions
-
-Pre-generate questions once, then reuse across all models. This ensures every model answers the exact same questions for fair comparison.
-
-```bash
-python generate_questions_local.py annotations.json -o generated_questions.json
-```
-
-Options:
-- `-d NUM` - Number of distractor answers per question (default: 7, giving 8 total options)
-- `-o PATH` - Output file path
-
-This produces 6 questions per video (16,164 total for the full dataset).
-
-### Step 2: Run Model Evaluation
-
-**Using eval_model.sh (recommended):**
-
-```bash
-# Evaluate a single model with pre-generated questions
-./eval_model.sh --file generated_questions.json --model qwen-7b
-
-# Without pre-generated questions (generates on-the-fly)
-./eval_model.sh --model ovis-9b
-```
-
-The script submits a SLURM job and automatically starts monitoring it.
-
-**Direct sbatch submission:**
-
-```bash
-# With questions file
-sbatch --export=MODEL=qwen-7b,QUESTIONS_FILE=generated_questions.json all_model_multi_gpu.sbatch
-
-# Without questions file
-sbatch --export=MODEL=internvl2.5-8b all_model_multi_gpu.sbatch
-```
-
-**Direct Python (no SLURM):**
-
-```bash
-python -m prompt_generator.evaluation.parallel_runner \
-    annotations.json videos/ \
-    -m qwen-7b \
-    -g 4 \
-    --questions-file generated_questions.json
-```
-
-### Step 3: Monitor Jobs
-
-Jobs are monitored automatically when using `eval_model.sh`. To monitor manually:
-
-```bash
-./monitor_job.sh <SLURM_JOB_ID>
-```
-
-Checks job status every 60 seconds, tails output/error logs, and reports the final state.
-
-### Step 4: Review Results
-
-Results are saved to `results_<model_name>/`:
-- `evaluation_<timestamp>.json` - Full results with per-question accuracy
-- `checkpoints/` - Per-GPU checkpoint files (for resume support)
-- `logs/` - Per-GPU stdout/stderr logs
-
-## Available Models
-
-Use shortcuts or full HuggingFace paths with `--model`.
-
-### Small (2-3B)
-| Shortcut | Model |
-|---|---|
-| `qwen-3b` | Qwen/Qwen2.5-VL-3B-Instruct |
-| `internvl-2b` | OpenGVLab/InternVL3-2B |
-| `ovis-2b` | AIDC-AI/Ovis2.5-2B |
-| `kimi-3b` | moonshotai/Kimi-VL-A3B-Instruct |
-| `kimi-3b-thinking` | moonshotai/Kimi-VL-A3B-Thinking |
-
-### Medium (7-9B)
-| Shortcut | Model |
-|---|---|
-| `qwen-7b` | Qwen/Qwen2.5-VL-7B-Instruct |
-| `internvl-8b` | OpenGVLab/InternVL3-8B |
-| `internvl2.5-8b` | OpenGVLab/InternVL2_5-8B |
-| `ovis-9b` | AIDC-AI/Ovis2.5-9B |
-| `ovis2-8b` | AIDC-AI/Ovis2-8B |
-| `nvila-8b` | nvidia/NVILA-8B |
-| `llava-video-7b` | lmms-lab/LLaVA-Video-7B-Qwen2 |
-| `videollama-7b` | DAMO-NLP-SG/VideoLLaMA3-7B |
-| `videochat-7b` | OpenGVLab/VideoChat-Flash-Qwen2_5-7B_InternVideo2-1B |
-| `oryx-7b` | THUdyh/Oryx-7B |
-| `valley-7b` | bytedance-research/Valley-Eagle-7B |
-| `video-r1-7b` | Video-R1/Video-R1-7B |
-| `lumian-7b` | prithivMLmods/Lumian-VLR-7B-Thinking |
-| `hunyuan-7b` | TencentARC/ARC-Hunyuan-Video-7B |
-| `internvideo-8b` | OpenGVLab/InternVideo2_5_Chat_8B |
-
-### Large (11-15B)
-| Shortcut | Model |
-|---|---|
-| `llama-11b` | meta-llama/Llama-3.2-11B-Vision |
-| `nvila-15b` | nvidia/NVILA-15B |
-
-### Extra Large (72-90B, multi-GPU required)
-| Shortcut | Model |
-|---|---|
-| `qwen-72b` | Qwen/Qwen2.5-VL-72B-Instruct |
-| `internvl-78b` | OpenGVLab/InternVL3-78B |
-| `llama-90b` | meta-llama/Llama-3.2-90B-Vision |
-
-## Question Types
-
-Each video generates 6 questions:
-
-| Type | What It Tests |
-|---|---|
-| Aggressor Identification | Who is performing the aggressive action? |
-| Victim Recognition | Who is the target/victim? |
-| Compound Aggressor-Victim | Identify both aggressor and victim together |
-| Compound Aggressor-Action-Victim | Who did what to whom? |
-| Compound Action-Victims | What action occurred and how many victims? |
-| Interaction Summary | Which summary describes the full interaction? |
-
-## Configuration
-
-The SLURM script (`all_model_multi_gpu.sbatch`) has these defaults that can be edited directly:
-
-| Parameter | Default | Description |
-|---|---|---|
-| `NUM_GPUS` | 4 | Number of GPUs for parallel evaluation |
-| `NUM_FRAMES` | 8 | Video frames extracted per clip |
-| `STAGGER_DELAY` | 30 | Seconds between GPU worker starts |
-| `--thinking-budget` | 512 | Token budget for model reasoning |
-| `--max-new-tokens` | 1024 | Max generation length |
-
-## Checkpoint & Resume
-
-Jobs automatically checkpoint after each video. If a job is interrupted (timeout, preemption), resubmitting the same command resumes from where it left off. Checkpoints are stored per-GPU in `results_<model>/checkpoints/`.
-
-To start fresh and ignore existing checkpoints, add `--no-resume` to the Python command or clear the checkpoint directory.
-
-## Annotations Format
-
-Each entry in `annotations.json`:
+The script generates `generated_questions.json`:
 
 ```json
 {
-  "file_name": "punch_chatgpt_025.mp4",
-  "action": "punch",
-  "aggressor": "person in a dark jacket",
-  "victim": "person in a dark blue long-sleeve shirt",
-  "environment": "outdoor parking lot",
-  "bystanders": ["person in white shirt"]
+  "metadata": {
+    "generated_at": "2025-05-04T12:34:56.789Z",
+    "total_questions": 18748,
+    "total_videos": 2674,
+    "distribution": {
+      "simple": 5,
+      "compound": 6,
+      "complex": 3,
+      "counting": 3,
+      "identification": 4
+    },
+    "hardness_profile": "standard"
+  },
+  "questions_by_video": {
+    "video_001.mp4": [
+      {
+        "video_name": "video_001.mp4",
+        "question_type": "primary_action",
+        "category": "simple",
+        "prompt": "What aggressive action takes place in this video?",
+        "answers": [
+          "Pushing",
+          "Pulling hair",
+          "Kicking",
+          "Punching"
+        ],
+        "correct_index": 0,
+        "correct_answer": "Pushing",
+        "hardness": "none_claim"
+      }
+    ]
+  }
 }
 ```
 
-## Requirements
+### How Questions Are Generated
 
-- Python 3.10+
-- PyTorch 2.0+
-- CUDA-capable GPU (H100 recommended)
-- SLURM cluster (for batch submission; optional for direct Python usage)
-- `pip install -r requirements.txt`
-- Flash Attention 2 (optional but recommended): `pip install flash-attn --no-build-isolation`
+1. **Template Selection**: For each video, the `CategoryDistributor` selects 5 question types (one per category) ensuring no duplicates
+2. **Answer Construction**: Correct answers are built from video annotations
+3. **Distractor Generation**: 7 distractors per question using hardness strategies:
+   - **role_reversal**: Swap aggressor/victim
+   - **wrong_action**: Use action from different video
+   - **wrong_victim/aggressor**: Use wrong role from same video
+   - **cross_video**: Use role/action from different video
+   - **bystander_substitution**: Replace role with bystander
+   - **frequency_saturation** (complex only): Balance person/action frequencies
+
+4. **Hardness Profiles**: Each question type has a recipe defining distractor composition
+
+
+### Local Evaluation (Development)
+
+For single-GPU testing on your machine:
+
+```bash
+python -m prompt_generator.evaluation.run_evaluation \
+  annotations.json \
+  /path/to/videos \
+  --model "Qwen/Qwen2.5-VL-7B-Instruct" \
+  --num-questions 10 \
+  --output-dir ./results
+```
+
+### Evaluation Arguments
+
+Common parameters for `run_evaluation.py`:
+
+```bash
+python -m prompt_generator.evaluation.run_evaluation \
+  annotations.json \
+  video_dir \
+  --model MODEL_PATH              # Hugging Face model path
+  --conda-env ENV_NAME            # Conda environment (server only)
+  --num-questions N               # Number of questions (default: 10)
+  --num-frames K                  # Frames per video (default: 8)
+  --batch-size B                  # Batch size for inference (default: 1)
+  --device DEVICE                 # 'cuda' (default) or 'cpu'
+  --output-dir DIR                # Output directory (default: '.')
+  --output-csv results.csv        # Export results to CSV
+  --checkpoint                    # Enable checkpointing for long runs
+  --part N --total-parts M        # Process part N of M (for splitting large jobs)
+```
+
+### Evaluation Output Format
+
+Results are saved to `evaluation_results_<timestamp>.json`:
+
+```json
+{
+  "metadata": {
+    "model_path": "Qwen/Qwen2.5-VL-7B-Instruct",
+    "num_frames": 8,
+    "timestamp": "2025-05-04T12:34:56.789Z",
+    "total_questions": 100
+  },
+  "summary": {
+    "total_questions": 100,
+    "correct_count": 82,
+    "accuracy": 0.82,
+    "accuracy_by_type": {
+      "primary_action": {
+        "total": 10,
+        "correct": 9,
+        "accuracy": 0.90
+      },
+      "compound_aggressor_action_victim": {
+        "total": 8,
+        "correct": 6,
+        "accuracy": 0.75
+      }
+    }
+  },
+  "results": [
+    {
+      "video_name": "video_001.mp4",
+      "question_type": "primary_action",
+      "prompt": "What aggressive action takes place?",
+      "answers": ["Pushing", "Pulling", "Kicking", "Punching"],
+      "correct_answer": "Pushing",
+      "correct_index": 0,
+      "model_response": "Pushing",
+      "model_selected_index": 0,
+      "is_correct": true
+    }
+  ]
+}
+```
+
+### Interpreting Results
+
+**Accuracy by Question Type**: Compare model performance across question difficulties to identify weak areas:
+- Simple questions (>90% expected for SOTA models)
+- Compound questions (70-85% expected)
+- Complex questions (60-80% expected)
+- Counting questions (40-70% expected)
+
+**Primary vs Secondary Split**: Analyze results separately:
+- Extract questions where `question_type` is in `SECONDARY_QUESTION_TYPES`
+- Compare accuracy drops for harder secondary questions
+
+**Per-Video Analysis**: For videos with consistent failures, check annotation quality.
+
+## Data Format Specification
+
+### Annotations Format
+
+Expected JSON structure:
+
+```json
+{
+  "annotations": [
+    {
+      "video_name": "video_001.mp4",
+      "aggressor": ["Person A", "Person B"],
+      "victim": ["Person C"],
+      "bystander": ["Person D"],
+      "action": "Pushing",
+      "environment": "School hallway"
+    }
+  ]
+}
+```
+
+All fields are optional for flexibility:
+- Missing `aggressor` → answers will say "No one displays aggressive behavior"
+- Missing `victim` → answers will say "No one appears to be victimized"
+- Missing `environment` → answers will say "location unclear"
+
+### Generated Questions Format
+
+Each question object contains:
+
+```json
+{
+  "video_name": "string",
+  "question_type": "string (one of 21 types)",
+  "category": "string (simple|compound|complex|counting|identification)",
+  "prompt": "string (the question text)",
+  "answers": ["string", "string", "string", "string"],
+  "correct_index": 0,
+  "correct_answer": "string",
+  "hardness": "string (role_reversal|wrong_action|...)"
+}
+```
+
+### Evaluation Results Format
+
+Each result object contains:
+
+```json
+{
+  "video_name": "string",
+  "question_type": "string",
+  "prompt": "string",
+  "answers": ["string", "string", "string", "string"],
+  "correct_answer": "string",
+  "correct_index": 0,
+  "model_response": "string (raw model output)",
+  "model_selected_index": 0,
+  "is_correct": true
+}
+```
