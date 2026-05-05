@@ -13,54 +13,45 @@ This benchmark evaluates VLMs on their ability to understand aggressive behavior
 
 ### Input Files
 
-- `annotations.json` (or `dataset.json`): Video annotations containing:
-  - `video_name`: Video filename
+- `annotations.json`: Video annotations containing:
+  - `file_name`: Video filename
   - `aggressor`: List of people displaying aggressive behavior
   - `victim`: List of people being victimized
-  - `bystander`: List of bystanders
+  - `bystanders`: List of bystanders
   - `action`: Primary aggressive action
   - `environment`: Scene location/context
 
-### Question Types (21 total)
+### Question Types (14 total)
 
-Questions are organized into **5 difficulty categories**:
+Questions are organized into **3 difficulty tiers** plus secondary types:
 
-#### Simple Questions (5 types)
+#### Basic Questions (4 types)
 - **Primary Action**: "What aggressive action takes place?"
 - **Aggressor Identification**: "Who displays aggressive behavior?"
 - **Victim Recognition**: "Who is victimized?"
-- **Bystander Detection**: "Is anyone a bystander?"
-- **Role Identification**: "What roles do people play?" (identification variant)
+- **Role Identification**: "What role does this person play?"
 
-#### Compound Questions (6 types)
+#### Compound Questions (3 types)
 - **Compound Action+Victims**: "What action is performed and who is victimized?"
 - **Compound Action+Aggressor**: "What action is performed and who performs it?"
 - **Compound Aggressor+Victim**: "Who aggresses against whom?"
-- **Compound Aggressor+Location**: "Who displays aggression and where?"
-- **Compound Action+Location**: "What action occurs and where?" (secondary type)
-- **Compound Aggressor+Victim+Count**: "Count of aggressors and victims?" (secondary type)
 
-#### Complex Questions (3 types)
+#### Detailed Questions (2 types)
 - **Compound Aggressor+Action+Victim**: "Who performs what action on whom?" (includes frequency-inverted distractors)
-- **Interaction Summary**: "Summarize the interaction" (includes frequency-inverted distractors)
 - **Sequence Verification**: "Verify if action sequence is correct" (includes frequency-inverted distractors)
 
-#### Counting Questions (3 types)
+#### Secondary Questions (5 types)
+- **Compound Action+Location**: "What action occurs and where?"
+- **Compound Aggressor+Victim+Count**: "Count of aggressors and victims?"
 - **Role Count Aggressor**: "How many people display aggressive behavior?"
 - **Role Count Victim**: "How many people are victimized?"
 - **Role Count Bystander**: "How many bystanders are present?"
 
-#### Identification Questions (4 types)
-- **Scene Location**: "Where does this take place?"
-- **Social Appropriateness**: "Which actions are socially inappropriate?"
-- **Perspective Aggressor**: "What is the aggressor's perspective?"
-- **Other**: Secondary or variant identification questions
-
 ### Distribution
 
 - **Primary Questions**: 15,004 questions across 9 types
-- **Secondary Questions**: 3,744 questions (marked with `_secondary` suffix)
-- **Total**: 18,748 generated questions from 2,674 videos
+- **Secondary Questions**: 3,744 questions across 5 types
+- **Total**: 18,748 generated questions from 2,670 videos
 
 See `prompt_generator/templates.py` for the authoritative definition of `SECONDARY_QUESTION_TYPES`.
 
@@ -110,7 +101,7 @@ The script generates `generated_questions.json`:
       "counting": 3,
       "identification": 4
     },
-    "hardness_profile": "standard"
+    "hardness_profile": "frequency_inverted"
   },
   "questions_by_video": {
     "video_001.mp4": [
@@ -138,7 +129,7 @@ The script generates `generated_questions.json`:
 
 1. **Template Selection**: For each video, the `CategoryDistributor` selects 5 question types (one per category) ensuring no duplicates
 2. **Answer Construction**: Correct answers are built from video annotations
-3. **Distractor Generation**: 7 distractors per question using hardness strategies:
+3. **Distractor Generation**: Up to 7 distractors per question (3 for role identification) using hardness strategies:
    - **role_reversal**: Swap aggressor/victim
    - **wrong_action**: Use action from different video
    - **wrong_victim/aggressor**: Use wrong role from same video
@@ -230,16 +221,12 @@ Results are saved to `evaluation_results_<timestamp>.json`:
 ### Interpreting Results
 
 **Accuracy by Question Type**: Compare model performance across question difficulties to identify weak areas:
-- Simple questions (>90% expected for SOTA models)
-- Compound questions (70-85% expected)
-- Complex questions (60-80% expected)
-- Counting questions (40-70% expected)
+- Basic questions
+- Compound questions
+- Detailed questions
 
 **Primary vs Secondary Split**: Analyze results separately:
 - Extract questions where `question_type` is in `SECONDARY_QUESTION_TYPES`
-- Compare accuracy drops for harder secondary questions
-
-**Per-Video Analysis**: For videos with consistent failures, check annotation quality.
 
 ## Data Format Specification
 
@@ -248,18 +235,16 @@ Results are saved to `evaluation_results_<timestamp>.json`:
 Expected JSON structure:
 
 ```json
-{
-  "annotations": [
-    {
-      "video_name": "video_001.mp4",
-      "aggressor": ["Person A", "Person B"],
-      "victim": ["Person C"],
-      "bystander": ["Person D"],
-      "action": "Pushing",
-      "environment": "School hallway"
-    }
-  ]
-}
+[
+  {
+    "file_name": "video_001.mp4",
+    "aggressor": ["Person A", "Person B"],
+    "victim": ["Person C"],
+    "bystanders": ["Person D"],
+    "action": "Pushing",
+    "environment": "School hallway"
+  }
+]
 ```
 
 All fields are optional for flexibility:
@@ -274,13 +259,13 @@ Each question object contains:
 ```json
 {
   "video_name": "string",
-  "question_type": "string (one of 21 types)",
-  "category": "string (simple|compound|complex|counting|identification)",
+  "question_type": "string (one of 14 types)",
+  "category": "string (basic|compound|detailed|secondary)",
   "prompt": "string (the question text)",
   "answers": ["string", "string", "string", "string"],
   "correct_index": 0,
   "correct_answer": "string",
-  "hardness": "string (role_reversal|wrong_action|...)"
+  "option_hardness": ["string", "string", "...(one per answer option)"]
 }
 ```
 
