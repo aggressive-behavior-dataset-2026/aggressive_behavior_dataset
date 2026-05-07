@@ -11,8 +11,29 @@ from collections import defaultdict
 from typing import Optional, Callable
 
 
-from ..generator import GeneratedQuestion
-from ..templates import SECONDARY_QUESTION_TYPES
+from dataclasses import dataclass as _question_dataclass
+
+
+@_question_dataclass
+class GeneratedQuestion:
+    video_name: str
+    question_type: str
+    prompt: str
+    answers: list[str]
+    correct_answer: str
+    correct_index: int
+    is_trick: bool = False
+    option_hardness: list[str] = None
+
+
+SECONDARY_QUESTION_TYPES = {
+    "compound_action_location",
+    "compound_aggressor_victim_count",
+    "compound_victim_bystander_count",
+    "role_count_aggressor",
+    "role_count_bystander",
+    "role_count_victim",
+}
 from .model_loader import ModelConfig, create_loader
 from .video_processor import (
     VideoProcessor,

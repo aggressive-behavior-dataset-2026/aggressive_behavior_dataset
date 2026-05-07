@@ -182,8 +182,8 @@ def run_evaluation(args: list[str] | None = None) -> None:
     parser.add_argument(
         "--questions-json",
         type=str,
-        default=None,
-        help="Path to pre-generated questions JSON file (skips question generation)",
+        required=True,
+        help="Path to pre-generated questions JSON file",
     )
 
     parser.add_argument(
@@ -419,25 +419,16 @@ def run_evaluation(args: list[str] | None = None) -> None:
             print()
 
 
-            if parsed.questions_json:
-                print(f"Using pre-generated questions from: {parsed.questions_json}")
-                print()
-                results = evaluator.evaluate_from_pregenerated(
-                    questions_json_path=parsed.questions_json,
-                    checkpoint_path=checkpoint_path,
-                    output_path=output_path,
-                    resume=not parsed.no_resume,
-                    max_retries=3,
-                    progress_callback=checkpoint_cb,
-                )
-            else:
-                results = evaluator.evaluate_all_with_checkpoint(
-                    checkpoint_path=checkpoint_path,
-                    output_path=output_path,
-                    resume=not parsed.no_resume,
-                    max_retries=3,
-                    progress_callback=checkpoint_cb,
-                )
+            print(f"Using pre-generated questions from: {parsed.questions_json}")
+            print()
+            results = evaluator.evaluate_from_pregenerated(
+                questions_json_path=parsed.questions_json,
+                checkpoint_path=checkpoint_path,
+                output_path=output_path,
+                resume=not parsed.no_resume,
+                max_retries=3,
+                progress_callback=checkpoint_cb,
+            )
 
             print()
             print("=" * 60)

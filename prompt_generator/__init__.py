@@ -1,5 +1,3 @@
-from .generator import QuestionGenerator
-from .answer_bank import AnswerBank
-from .templates import QUESTION_TEMPLATES
+from .evaluation.evaluator import GeneratedQuestion
 
-__all__ = ["QuestionGenerator", "AnswerBank", "QUESTION_TEMPLATES"]
+__all__ = ["GeneratedQuestion"]

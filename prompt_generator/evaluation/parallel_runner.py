@@ -16,7 +16,7 @@ from typing import Optional
 import argparse
 from collections import defaultdict
 
-from ..templates import SECONDARY_QUESTION_TYPES
+from .evaluator import SECONDARY_QUESTION_TYPES
 
 
 def get_completed_videos(checkpoint_dir: Path) -> set[str]:

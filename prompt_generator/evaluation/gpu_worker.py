@@ -73,7 +73,7 @@ def main():
 
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-    from prompt_generator.generator import GeneratedQuestion
+    from prompt_generator.evaluation.evaluator import GeneratedQuestion
 
 
     with open(args.videos_file, 'r') as f:
