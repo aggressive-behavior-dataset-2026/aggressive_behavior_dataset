@@ -55,11 +55,7 @@ Questions are organized into **3 difficulty tiers** plus secondary types:
 
 See `prompt_generator/templates.py` for the authoritative definition of `SECONDARY_QUESTION_TYPES`.
 
-## Question Generation
-
-### Quick Start
-
-### Required Question Format
+## Question Structure
 
 ```json
 {
@@ -112,37 +108,40 @@ See `prompt_generator/templates.py` for the authoritative definition of `SECONDA
 
 4. **Hardness Profiles**: Each question type has a recipe defining distractor composition
 
-### Local Evaluation (Development)
-
-For single-GPU testing on your machine:
+## Evaluation Quick Start
 
 ```bash
-python -m prompt_generator.evaluation.run_evaluation \
+python -m prompt_generator.evaluation.parallel_runner \
   annotations.json \
-  /path/to/videos \
-  --model "Qwen/Qwen2.5-VL-7B-Instruct" \
-  --num-questions 10 \
-  --output-dir ./results
+  videos/ \
+  -o results_output/ \
+  -g 1 \
+  -m OpenGVLab/InternVL2_5-8B \
+  -f 8 \
+  --thinking-budget 512 \
+  --max-new-tokens 1024 \
+  --questions-file generated_questions.json
 ```
 
 ### Evaluation Arguments
 
-Common parameters for `run_evaluation.py`:
+Common parameters for `prompt_generator/evaluation/parallel_runner.py`:
 
 ```bash
-python -m prompt_generator.evaluation.run_evaluation \
-  annotations.json \
-  video_dir \
-  --model MODEL_PATH              # Hugging Face model path
-  --conda-env ENV_NAME            # Conda environment (server only)
-  --num-questions N               # Number of questions (default: 10)
-  --num-frames K                  # Frames per video (default: 8)
-  --batch-size B                  # Batch size for inference (default: 1)
-  --device DEVICE                 # 'cuda' (default) or 'cpu'
-  --output-dir DIR                # Output directory (default: '.')
-  --output-csv results.csv        # Export results to CSV
-  --checkpoint                    # Enable checkpointing for long runs
-  --part N --total-parts M        # Process part N of M (for splitting large jobs)
+python -m prompt_generator.evaluation.parallel_runner \                                                                    
+    annotations.json \              # Path to Annotations file
+    video_dir \                     # Path to videos directory                                                                                                              
+    -o OUTPUT_DIR                   # Output directory (default: ./results)
+    -g NUM_GPUS                     # Number of GPUs (default: auto-detect)                                                  
+    -m MODEL_PATH                   # Hugging Face model path (default: AIDC-AI/Ovis2.5-9B)                                  
+    -f NUM_FRAMES                   # Frames per video (default: 8)                                                          
+    -d NUM_DISTRACTORS              # Number of distractors                                                                  
+    --thinking-budget N             # Thinking budget for thinking models (default: 512)
+    --max-new-tokens N              # Max generation tokens (default: 1024)                                                  
+    --stagger-delay SECS            # Delay between GPU worker launches                                                      
+    --resume                        # Resume from checkpoint                                                               
+    --no-resume                     # Start fresh, ignore checkpoints                                                      
+    --questions-file PATH           # Pre-generated question bank JSON
 ```
 
 ### Evaluation Output Format
