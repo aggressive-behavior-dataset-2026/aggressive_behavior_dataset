@@ -59,34 +59,7 @@ See `prompt_generator/templates.py` for the authoritative definition of `SECONDA
 
 ### Quick Start
 
-Generate questions locally (no GPU required):
-
-```bash
-# Basic usage
-python generate_questions_local.py annotations.json
-
-# With custom output file
-python generate_questions_local.py annotations.json -o generated_questions.json
-
-# Sample a subset (5% of videos)
-python generate_questions_local.py annotations.json --sample 0.05 --seed 42
-
-# Sample specific count
-python generate_questions_local.py annotations.json --sample 100 --seed 42
-```
-
-### Parameters
-
-- `annotations.json`: Input annotation file (required)
-- `-o, --output`: Output file path (default: `generated_questions.json`)
-- `--sample`: Fraction (0-1) or count of videos to sample (default: all)
-- `--seed`: Random seed for reproducibility (default: none)
-- `-d, --depth`: Max difficulty for distractors (default: 8)
-- `--recipes`: Custom hardness recipe JSON file (optional)
-
-### Output Format
-
-The script generates `generated_questions.json`:
+### Required Question Format
 
 ```json
 {
@@ -125,10 +98,10 @@ The script generates `generated_questions.json`:
 }
 ```
 
-### How Questions Are Generated
+### General Question Compisition
 
-1. **Template Selection**: For each video, the `CategoryDistributor` selects 5 question types (one per category) ensuring no duplicates
-2. **Answer Construction**: Correct answers are built from video annotations
+1. **Template Selection**: For each video, a `CategoryDistributor` selected 5 question types (one per category) ensuring no duplicates
+2. **Answer Construction**: Correct answers were built from video annotations
 3. **Distractor Generation**: Up to 7 distractors per question (3 for role identification) using hardness strategies:
    - **role_reversal**: Swap aggressor/victim
    - **wrong_action**: Use action from different video
@@ -138,7 +111,6 @@ The script generates `generated_questions.json`:
    - **frequency_saturation** (complex only): Balance person/action frequencies
 
 4. **Hardness Profiles**: Each question type has a recipe defining distractor composition
-
 
 ### Local Evaluation (Development)
 
@@ -263,7 +235,7 @@ Each question object contains:
   "category": "string (basic|compound|detailed|secondary)",
   "prompt": "string (the question text)",
   "answers": ["string", "string", "string", "string"],
-  "correct_index": 0,
+  "correct_index": int,
   "correct_answer": "string",
   "option_hardness": ["string", "string", "...(one per answer option)"]
 }
@@ -278,11 +250,11 @@ Each result object contains:
   "video_name": "string",
   "question_type": "string",
   "prompt": "string",
-  "answers": ["string", "string", "string", "string"],
+  "answers": ["string", "string", ...],
   "correct_answer": "string",
-  "correct_index": 0,
+  "correct_index": int,
   "model_response": "string (raw model output)",
-  "model_selected_index": 0,
-  "is_correct": true
+  "model_selected_index": int,
+  "is_correct": bool
 }
 ```
